@@ -68,6 +68,7 @@ function Ambulance({ sceneIndex, interactiveTilt }) {
   const groupRef = useRef();
   const scaleRef = useRef(new THREE.Vector3(1, 1, 1));
   const baseRotation = useRef(new THREE.Euler());
+  const disassemble = useRef({ value: 1 });
   const responsiveScale = useResponsiveScale();
 
   useEffect(() => {
@@ -83,6 +84,14 @@ function Ambulance({ sceneIndex, interactiveTilt }) {
       { x: 0.2, y: 0.2, z: 0.2 },
       { x: 1, y: 1, z: 1, duration: 1.4, ease: "back.out(1.8)" }
     );
+  }, [sceneIndex]);
+
+  useEffect(() => {
+    gsap.to(disassemble.current, {
+      value: sceneIndex === 2 ? 0 : 1,
+      duration: 0.7,
+      ease: "power4.inOut",
+    });
   }, [sceneIndex]);
 
   useFrame(({ clock }) => {
@@ -107,9 +116,10 @@ function Ambulance({ sceneIndex, interactiveTilt }) {
     const breathing = sceneIndex === 0 ? Math.sin(t * Math.PI) * 0.02 : 0;
 
     groupRef.current.scale.lerp(
-      scaleRef.current.clone().multiplyScalar(responsiveScale).multiply(
-        new THREE.Vector3(1, 1 + breathing, 1)
-      ),
+      scaleRef.current
+        .clone()
+        .multiplyScalar(responsiveScale * disassemble.current.value)
+        .multiply(new THREE.Vector3(1, 1 + breathing, 1)),
       0.2
     );
 
@@ -388,6 +398,8 @@ export default function FairRosterOnboarding() {
   const [sceneIndex, setSceneIndex] = useState(0);
   const interactiveTilt = useRef(new THREE.Vector2(0, 0));
   const ambulanceRef = useRef();
+  const flashRef = useRef();
+  const [backgroundColor, setBackgroundColor] = useState("#020617");
 
   const handleNext = () => {
     const nextScene = (sceneIndex + 1) % sceneCopy.length;
@@ -409,10 +421,49 @@ export default function FairRosterOnboarding() {
           });
         },
       });
+      gsap.to(ambulanceRef.current.position, {
+        z: -0.6,
+        duration: 0.4,
+        ease: "power4.inOut",
+        onComplete: () => {
+          gsap.to(ambulanceRef.current.position, {
+            z: 0,
+            duration: 0.6,
+            ease: "power4.inOut",
+          });
+        },
+      });
+    }
+
+    if (nextScene === 2 && flashRef.current) {
+      gsap.fromTo(
+        flashRef.current,
+        { opacity: 0 },
+        {
+          opacity: 0.85,
+          duration: 0.4,
+          ease: "power4.inOut",
+          onComplete: () => {
+            gsap.to(flashRef.current, {
+              opacity: 0,
+              duration: 0.6,
+              ease: "power4.inOut",
+            });
+          },
+        }
+      );
     }
 
     setSceneIndex(nextScene);
   };
+
+  useEffect(() => {
+    if (sceneIndex === 2) {
+      setBackgroundColor("#0F172A");
+    } else {
+      setBackgroundColor("#020617");
+    }
+  }, [sceneIndex]);
 
   return (
     <div style={styles.wrapper}>
@@ -420,19 +471,30 @@ export default function FairRosterOnboarding() {
         dpr={[1, 2]}
         shadows
         camera={{ position: [0, 1.2, 5.2], fov: 45 }}
+        onCreated={({ gl }) => {
+          if ("outputColorSpace" in gl && THREE.SRGBColorSpace) {
+            gl.outputColorSpace = THREE.SRGBColorSpace;
+          } else if ("outputEncoding" in gl && THREE.sRGBEncoding) {
+            gl.outputEncoding = THREE.sRGBEncoding;
+          }
+        }}
         onPointerMove={(event) => {
           interactiveTilt.current.set(
             event.pointer.x * 0.6,
             event.pointer.y * 0.6
           );
         }}
+        onPointerOut={() => {
+          interactiveTilt.current.set(0, 0);
+        }}
       >
-        <color attach="background" args={["#020617"]} />
+        <color attach="background" args={[backgroundColor]} />
         <group ref={ambulanceRef}>
           <Scene sceneIndex={sceneIndex} interactiveTilt={interactiveTilt} />
         </group>
       </Canvas>
 
+      <div ref={flashRef} style={styles.flash} />
       <div style={styles.overlay}>
         <div style={styles.header}>
           <span style={styles.logo}>FairRoster</span>
@@ -467,6 +529,14 @@ const styles = {
     overflow: "hidden",
     fontFamily: "'Inter', 'SF Pro Text', sans-serif",
     color: "#E2E8F0",
+  },
+  flash: {
+    position: "absolute",
+    inset: 0,
+    background: "rgba(226, 232, 240, 0.9)",
+    opacity: 0,
+    pointerEvents: "none",
+    mixBlendMode: "screen",
   },
   overlay: {
     position: "absolute",
